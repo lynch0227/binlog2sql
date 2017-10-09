@@ -94,7 +94,7 @@ UPDATE `test`.`test3` SET `addtime`='2016-12-10 13:03:22', `data`='中文', `id`
 
 -B, --flashback 生成回滚语句，可解析大文件，不受内存限制，每打印一千行加一句SLEEP SELECT(1).可选.与stop-never或no-primary-key不能同时添加.
 
--PK,----where-only-pk 对UPDATE,DELETE语句的where条件只显示主键. 可选
+-PK,--where-only-pk 对UPDATE,DELETE语句的where条件只显示主键. 可选
 
 **解析范围控制**
 
