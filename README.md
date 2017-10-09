@@ -1,7 +1,7 @@
 binlog2sql
 ========================
 
-从MySQL binlog解析出你要的SQL。根据不同选项，你可以得到原始SQL、回滚SQL、去除主键的INSERT SQL等。
+从MySQL binlog解析出你要的SQL.根据不同选项，你可以得到原始SQL、回滚SQL、去除主键的INSERT SQL等.
 
 用途
 ===========
@@ -13,7 +13,7 @@ binlog2sql
 
 项目状态
 ===
-正常维护。应用于大众点评线上环境。线上环境的操作，请在对MySQL**相当熟悉**的同学指导下进行
+正常维护.应用于大众点评线上环境.线上环境的操作，请在对MySQL**相当熟悉**的同学指导下进行
 
 * 已测试环境
     * Python 2.6, 2.7
@@ -27,7 +27,7 @@ binlog2sql
 shell> git clone https://github.com/danfengcao/binlog2sql.git && cd binlog2sql
 shell> pip install -r requirements.txt
 ```
-git与pip的安装问题请自行搜索解决。
+git与pip的安装问题请自行搜索解决.
 
 使用
 =========
@@ -88,31 +88,33 @@ UPDATE `test`.`test3` SET `addtime`='2016-12-10 13:03:22', `data`='中文', `id`
 
 **解析模式**
 
---stop-never 持续同步binlog。可选。不加则同步至执行命令时最新的binlog位置。
+--stop-never 持续同步binlog.可选.不加则同步至执行命令时最新的binlog位置.
 
--K, --no-primary-key 对INSERT语句去除主键。可选。
+-K, --no-primary-key 对INSERT语句去除主键.可选.
 
--B, --flashback 生成回滚语句，可解析大文件，不受内存限制，每打印一千行加一句SLEEP SELECT(1)。可选。与stop-never或no-primary-key不能同时添加。
+-B, --flashback 生成回滚语句，可解析大文件，不受内存限制，每打印一千行加一句SLEEP SELECT(1).可选.与stop-never或no-primary-key不能同时添加.
+
+-PK,----where-only-pk 对UPDATE,DELETE语句的where条件只显示主键. 可选
 
 **解析范围控制**
 
---start-file 起始解析文件。必须。
+--start-file 起始解析文件.必须.
 
---start-position/--start-pos start-file的起始解析位置。可选。默认为start-file的起始位置。
+--start-position/--start-pos start-file的起始解析位置.可选.默认为start-file的起始位置.
 
---stop-file/--end-file 末尾解析文件。可选。默认为start-file同一个文件。若解析模式为stop-never，此选项失效。
+--stop-file/--end-file 末尾解析文件.可选.默认为start-file同一个文件.若解析模式为stop-never，此选项失效.
 
---stop-position/--end-pos stop-file的末尾解析位置。可选。默认为stop-file的最末位置；若解析模式为stop-never，此选项失效。
+--stop-position/--end-pos stop-file的末尾解析位置.可选.默认为stop-file的最末位置；若解析模式为stop-never，此选项失效.
 
---start-datetime 从哪个时间点的binlog开始解析，格式必须为datetime，如'2016-11-11 11:11:11'。可选。默认不过滤。
+--start-datetime 从哪个时间点的binlog开始解析，格式必须为datetime，如'2016-11-11 11:11:11'.可选.默认不过滤.
 
---stop-datetime 到哪个时间点的binlog停止解析，格式必须为datetime，如'2016-11-11 11:11:11'。可选。默认不过滤。
+--stop-datetime 到哪个时间点的binlog停止解析，格式必须为datetime，如'2016-11-11 11:11:11'.可选.默认不过滤.
 
 **对象过滤**
 
--d, --databases 只输出目标db的sql。可选。默认为空。
+-d, --databases 只输出目标db的sql.可选.默认为空.
 
--t, --tables 只输出目标tables的sql。可选。默认为空。
+-t, --tables 只输出目标tables的sql.可选.默认为空.
 
 ### 应用案例
 
@@ -155,7 +157,7 @@ Empty set (0.00 sec)
 	+------------------+-----------+
 	```
 
-2. 最新的binlog文件是mysql-bin.000052，我们再定位误操作SQL的binlog位置。误操作人只能知道大致的误操作时间，我们根据大致时间过滤数据。
+2. 最新的binlog文件是mysql-bin.000052，我们再定位误操作SQL的binlog位置.误操作人只能知道大致的误操作时间，我们根据大致时间过滤数据.
 
 	```bash
 	shell> python binlog2sql/binlog2sql.py -h127.0.0.1 -P3306 -uadmin -p'admin' -dtest -ttbl --start-file='mysql-bin.000052' --start-datetime='2016-12-13 20:25:00' --stop-datetime='2016-12-13 20:30:00'
@@ -168,7 +170,7 @@ Empty set (0.00 sec)
 	DELETE FROM `test`.`tbl` WHERE `addtime`='2016-12-12 00:00:00' AND `id`=4 AND `name`='小李' LIMIT 1; #start 728 end 938 time 2016-12-13 20:28:05
 	```
 
-3. 我们得到了误操作sql的准确位置在728-938之间，再根据位置进一步过滤，使用flashback模式生成回滚sql，检查回滚sql是否正确(注：真实环境下，此步经常会进一步筛选出需要的sql。结合grep、编辑器等)
+3. 我们得到了误操作sql的准确位置在728-938之间，再根据位置进一步过滤，使用flashback模式生成回滚sql，检查回滚sql是否正确(注：真实环境下，此步经常会进一步筛选出需要的sql.结合grep、编辑器等)
 
 	```bash
 	shell> python binlog2sql/binlog2sql.py -h127.0.0.1 -P3306 -uadmin -p'admin' -dtest -ttbl --start-file='mysql-bin.000052' --start-position=3346 --stop-position=3556 -B > rollback.sql | cat
@@ -179,7 +181,7 @@ Empty set (0.00 sec)
 	INSERT INTO `test`.`tbl`(`addtime`, `id`, `name`) VALUES ('2016-12-10 00:04:33', 1, '小赵'); #start 728 end 938 time 2016-12-13 20:28:05
 	```
 
-4. 确认回滚sql正确，执行回滚语句。登录mysql确认，数据回滚成功。
+4. 确认回滚sql正确，执行回滚语句.登录mysql确认，数据回滚成功.
 
 	```bash
 	shell> mysql -h127.0.0.1 -P3306 -uadmin -p'admin' < rollback.sql
@@ -218,7 +220,7 @@ Empty set (0.00 sec)
 
 ### 联系我
 
-有任何问题，请与我联系。微信：danfeng053005 邮箱：[danfengcao.info@gmail.com](danfengcao.info@gmail.com)
+有任何问题，请与我联系.微信：danfeng053005 邮箱：[danfengcao.info@gmail.com](danfengcao.info@gmail.com)
 
 欢迎提问题提需求，欢迎pull requests！
 
