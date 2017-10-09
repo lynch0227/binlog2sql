@@ -79,7 +79,7 @@ def parse_args(args):
                         help='Generate insert sql without primary key if exists', default=False)
     parser.add_argument('-B', '--flashback', dest='flashback', action='store_true',
                         help='Flashback data to start_postition of start_file', default=False)
-    parser.add_argument('--where-only-pk', dest='whereonlypk', action='store_true',
+    parser.add_argument('-PK','--where-only-pk', dest='whereonlypk', action='store_true',
                         help='Where condition only contain primry key', default=False)
     return parser
 
