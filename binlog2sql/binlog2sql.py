@@ -1,21 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys, datetime
+import datetime
+import os
+import sys
+
 import pymysql
 from pymysqlreplication import BinLogStreamReader
+from pymysqlreplication.event import QueryEvent, RotateEvent, FormatDescriptionEvent
 from pymysqlreplication.row_event import (
     WriteRowsEvent,
     UpdateRowsEvent,
     DeleteRowsEvent,
 )
-from pymysqlreplication.event import QueryEvent, RotateEvent, FormatDescriptionEvent
+
 from binlog2sql_util import command_line_args, concat_sql_from_binlogevent, create_unique_file, reversed_lines
 
-class Binlog2sql(object):
 
+class Binlog2sql(object):
     def __init__(self, connectionSettings, startFile=None, startPos=None, endFile=None, endPos=None, startTime=None,
-                 stopTime=None, only_schemas=None, only_tables=None, nopk=False, flashback=False, stopnever=False):
+                 stopTime=None, only_schemas=None, only_tables=None, only_pk=False, nopk=False, flashback=False,
+                 stopnever=False):
         '''
         connectionSettings: {'host': 127.0.0.1, 'port': 3306, 'user': slave, 'passwd': slave}
         '''
@@ -24,18 +29,23 @@ class Binlog2sql(object):
 
         self.connectionSettings = connectionSettings
         self.startFile = startFile
-        self.startPos = startPos if startPos else 4 # use binlog v4
+        self.startPos = startPos if startPos else 4  # use binlog v4
         self.endFile = endFile if endFile else startFile
         self.endPos = endPos
-        self.startTime = datetime.datetime.strptime(startTime, "%Y-%m-%d %H:%M:%S") if startTime else datetime.datetime.strptime('1970-01-01 00:00:00', "%Y-%m-%d %H:%M:%S")
-        self.stopTime = datetime.datetime.strptime(stopTime, "%Y-%m-%d %H:%M:%S") if stopTime else datetime.datetime.strptime('2999-12-31 00:00:00', "%Y-%m-%d %H:%M:%S")
+        self.startTime = datetime.datetime.strptime(startTime,
+                                                    "%Y-%m-%d %H:%M:%S") if startTime else datetime.datetime.strptime(
+            '1970-01-01 00:00:00', "%Y-%m-%d %H:%M:%S")
+        self.stopTime = datetime.datetime.strptime(stopTime,
+                                                   "%Y-%m-%d %H:%M:%S") if stopTime else datetime.datetime.strptime(
+            '2999-12-31 00:00:00', "%Y-%m-%d %H:%M:%S")
 
         self.only_schemas = only_schemas if only_schemas else None
         self.only_tables = only_tables if only_tables else None
-        self.nopk, self.flashback, self.stopnever = (nopk, flashback, stopnever)
+        self.only_pk, self.nopk, self.flashback, self.stopnever = (only_pk, nopk, flashback, stopnever)
 
         self.binlogList = []
         self.connection = pymysql.connect(**self.connectionSettings)
+        self.pk_list = {}
         try:
             cur = self.connection.cursor()
             cur.execute("SHOW MASTER STATUS")
@@ -52,7 +62,22 @@ class Binlog2sql(object):
             cur.execute("SELECT @@server_id")
             self.serverId = cur.fetchone()[0]
             if not self.serverId:
-                raise ValueError('need set server_id in mysql server %s:%s' % (self.connectionSettings['host'], self.connectionSettings['port']))
+                raise ValueError('need set server_id in mysql server %s:%s' % (
+                    self.connectionSettings['host'], self.connectionSettings['port']))
+
+            if self.only_pk and self.only_tables and self.only_schemas:
+                cur.execute(
+                    "SELECT table_schema,table_name, group_concat(column_name order by ordinal_position asc) pk_name \
+                      FROM information_schema.KEY_COLUMN_USAGE \
+                    WHERE table_schema IN (%s) \
+                     AND table_name IN (%s) \
+                     AND constraint_name='PRIMARY' \
+                    GROUP BY table_schema,table_name" % (
+                        "'" + "','".join(self.only_schemas), "','".join(self.only_tables) + "'"))
+
+                for row in cur.fetchall():
+                    self.pk_list[row[0] + '.' + row[1]] = row[2].split(',')
+
         finally:
             cur.close()
 
@@ -62,34 +87,44 @@ class Binlog2sql(object):
                                     only_tables=self.only_tables, resume_stream=True)
 
         cur = self.connection.cursor()
-        tmpFile = create_unique_file('%s.%s' % (self.connectionSettings['host'],self.connectionSettings['port'])) # to simplify code, we do not use file lock for tmpFile.
-        ftmp = open(tmpFile ,"w")
+        tmpFile = create_unique_file('%s.%s' % (self.connectionSettings['host'], self.connectionSettings[
+            'port']))  # to simplify code, we do not use file lock for tmpFile.
+        ftmp = open(tmpFile, "w")
         flagLastEvent = False
         eStartPos, lastPos = stream.log_pos, stream.log_pos
         try:
             for binlogevent in stream:
                 if not self.stopnever:
-                    if (stream.log_file == self.endFile and stream.log_pos == self.endPos) or (stream.log_file == self.eofFile and stream.log_pos == self.eofPos):
+                    if (stream.log_file == self.endFile and stream.log_pos == self.endPos) or (
+                                    stream.log_file == self.eofFile and stream.log_pos == self.eofPos):
                         flagLastEvent = True
                     elif datetime.datetime.fromtimestamp(binlogevent.timestamp) < self.startTime:
-                        if not (isinstance(binlogevent, RotateEvent) or isinstance(binlogevent, FormatDescriptionEvent)):
+                        if not (isinstance(binlogevent, RotateEvent) or isinstance(binlogevent,
+                                                                                   FormatDescriptionEvent)):
                             lastPos = binlogevent.packet.log_pos
                         continue
-                    elif (stream.log_file not in self.binlogList) or (self.endPos and stream.log_file == self.endFile and stream.log_pos > self.endPos) or (stream.log_file == self.eofFile and stream.log_pos > self.eofPos) or (datetime.datetime.fromtimestamp(binlogevent.timestamp) >= self.stopTime):
+                    elif (stream.log_file not in self.binlogList) \
+                            or (self.endPos and stream.log_file == self.endFile and stream.log_pos > self.endPos) \
+                            or (stream.log_file == self.eofFile and stream.log_pos > self.eofPos) \
+                            or (datetime.datetime.fromtimestamp(binlogevent.timestamp) >= self.stopTime):
                         break
-                    # else:
-                    #     raise ValueError('unknown binlog file or position')
+                        # else:
+                        #     raise ValueError('unknown binlog file or position')
 
                 if isinstance(binlogevent, QueryEvent) and binlogevent.query == 'BEGIN':
                     eStartPos = lastPos
 
                 if isinstance(binlogevent, QueryEvent):
-                    sql = concat_sql_from_binlogevent(cursor=cur, binlogevent=binlogevent, flashback=self.flashback, nopk=self.nopk)
+                    sql = concat_sql_from_binlogevent(cursor=cur, binlogevent=binlogevent, flashback=self.flashback,
+                                                      nopk=self.nopk)
                     if sql:
                         print sql
-                elif isinstance(binlogevent, WriteRowsEvent) or isinstance(binlogevent, UpdateRowsEvent) or isinstance(binlogevent, DeleteRowsEvent):
+                elif isinstance(binlogevent, WriteRowsEvent) or isinstance(binlogevent, UpdateRowsEvent) or isinstance(
+                        binlogevent, DeleteRowsEvent):
                     for row in binlogevent.rows:
-                        sql = concat_sql_from_binlogevent(cursor=cur, binlogevent=binlogevent, row=row , flashback=self.flashback, nopk=self.nopk, eStartPos=eStartPos)
+                        sql = concat_sql_from_binlogevent(cursor=cur, binlogevent=binlogevent, row=row,
+                                                          flashback=self.flashback, nopk=self.nopk, eStartPos=eStartPos,
+                                                          pk_list=self.pk_list)
                         if self.flashback:
                             ftmp.write(sql + '\n')
                         else:
@@ -127,11 +162,11 @@ class Binlog2sql(object):
 
 
 if __name__ == '__main__':
-
     args = command_line_args(sys.argv[1:])
-    connectionSettings = {'host':args.host, 'port':args.port, 'user':args.user, 'passwd':args.password}
+    connectionSettings = {'host': args.host, 'port': args.port, 'user': args.user, 'passwd': args.password}
     binlog2sql = Binlog2sql(connectionSettings=connectionSettings, startFile=args.startFile,
                             startPos=args.startPos, endFile=args.endFile, endPos=args.endPos,
                             startTime=args.startTime, stopTime=args.stopTime, only_schemas=args.databases,
-                            only_tables=args.tables, nopk=args.nopk, flashback=args.flashback, stopnever=args.stopnever)
+                            only_tables=args.tables, only_pk=args.whereonlypk, nopk=args.nopk, flashback=args.flashback,
+                            stopnever=args.stopnever)
     binlog2sql.process_binlog()
