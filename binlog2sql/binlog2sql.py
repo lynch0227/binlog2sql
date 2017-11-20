@@ -4,6 +4,7 @@
 import datetime
 import os
 import sys
+import traceback
 
 import pymysql
 from pymysqlreplication import BinLogStreamReader
@@ -73,7 +74,7 @@ class Binlog2sql(object):
                      AND table_name IN (%s) \
                      AND constraint_name='PRIMARY' \
                     GROUP BY table_schema,table_name" % (
-                        "'" + "','".join(self.only_schemas), "','".join(self.only_tables) + "'"))
+                        "'" + "','".join(self.only_schemas) + "'", "'"+ "','".join(self.only_tables) + "'"))
 
                 for row in cur.fetchall():
                     self.pk_list[row[0] + '.' + row[1]] = row[2].split(',')
@@ -94,6 +95,7 @@ class Binlog2sql(object):
         eStartPos, lastPos = stream.log_pos, stream.log_pos
         try:
             for binlogevent in stream:
+                # binlogevent.dump()
                 if not self.stopnever:
                     if (stream.log_file == self.endFile and stream.log_pos == self.endPos) or (
                                     stream.log_file == self.eofFile and stream.log_pos == self.eofPos):
@@ -138,6 +140,8 @@ class Binlog2sql(object):
 
             if self.flashback:
                 self.print_rollback_sql(tmpFile)
+        except Exception, e:
+            print traceback.format_exc()
         finally:
             os.remove(tmpFile)
         cur.close()
@@ -162,8 +166,10 @@ class Binlog2sql(object):
 
 
 if __name__ == '__main__':
-    args = command_line_args(sys.argv[1:])
-    connectionSettings = {'host': args.host, 'port': args.port, 'user': args.user, 'passwd': args.password}
+    # args = command_line_args(sys.argv[1:])
+    args = command_line_args(
+        '-utest -P3306 -ptest -h10.1.150.70 -d test sys -t t_city t --start-file=mysql-bin.000002 -B -PK'.split(' '))
+    connectionSettings = {'host': args.host, 'port': args.port, 'user': args.user, 'passwd': args.password,'charset': 'utf8'}
     binlog2sql = Binlog2sql(connectionSettings=connectionSettings, startFile=args.startFile,
                             startPos=args.startPos, endFile=args.endFile, endPos=args.endPos,
                             startTime=args.startTime, stopTime=args.stopTime, only_schemas=args.databases,
