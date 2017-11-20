@@ -94,7 +94,7 @@ UPDATE `test`.`test3` SET `addtime`='2016-12-10 13:03:22', `data`='中文', `id`
 
 -B, --flashback 生成回滚语句，可解析大文件，不受内存限制，每打印一千行加一句SLEEP SELECT(1).可选.与stop-never或no-primary-key不能同时添加.
 
--PK,--where-only-pk 对UPDATE,DELETE语句的where条件只显示主键. 可选
+-PK,----where-only-pk 对UPDATE,DELETE语句的where条件只显示主键. 可选
 
 **解析范围控制**
 
@@ -115,6 +115,15 @@ UPDATE `test`.`test3` SET `addtime`='2016-12-10 13:03:22', `data`='中文', `id`
 -d, --databases 只输出目标db的sql.可选.默认为空.
 
 -t, --tables 只输出目标tables的sql.可选.默认为空.
+
+###Troubleshooting:
+1. UnicodeDecodeError: 'utf8' codec can't decode byte 0x8f in position 1963: invalid start byte
+vim /usr/lib/python2.6/site-packages/pymysqlreplication/event.py
+remove the decode("utf_8") function
+Pre:
+self.query = self.packet.read(event_size - 13 - self.status_vars_length - self.schema_length - 1).decode("utf_8")
+After:
+self.query = self.packet.read(event_size - 13 - self.status_vars_length - self.schema_length - 1)
 
 ### 应用案例
 
